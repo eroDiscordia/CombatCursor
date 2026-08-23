@@ -1,6 +1,6 @@
 # CombatCursor
 
-**Version 2.2.1** — for Project Ascension (Conquest of Azeroth), WotLK 3.3.5 client.
+**Version 2.2.3** — for Project Ascension (Conquest of Azeroth), WotLK 3.3.5 client.
 
 Highlights your mouse cursor with a bright, customizable ring so it's never lost
 in the middle of a fight. Fully configurable in-game, either through a settings

@@ -2,7 +2,7 @@
 ## Title: Combat Cursor Highlight
 ## Notes: Draws a bright, customizable ring around your mouse cursor while you are in combat, so you never lose it in the middle of a fight. Configure via /ccursor config or Game Menu -> Interface -> AddOns -> CombatCursor.
 ## Author: Chuckles
-## Version: 2.2.2
+## Version: 2.2.3
 ## SavedVariables: CombatCursorDB
 
 CombatCursor.lua

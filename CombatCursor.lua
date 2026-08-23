@@ -32,17 +32,6 @@ for k, v in pairs(defaults) do
 end
 local db = CombatCursorDB
 
--- List of (widget -> db) resync closures, one per GUI widget created.
--- Needed because the GUI panel gets built before the real saved data has
--- loaded (see the ADDON_LOADED handler below for why) -- once db gets
--- re-pointed at the real table, every widget's ON-SCREEN value also needs
--- to be refreshed to match, since SetChecked/SetValue only happens once
--- at widget creation and doesn't auto-update just because db changes.
-local refreshFns = {}
-local function refreshAllWidgets()
-    for _, fn in ipairs(refreshFns) do fn() end
-end
-
 local function dprint(msg)
     if db.debug then
         print("|cff888888CombatCursor debug:|r " .. msg)
@@ -149,7 +138,7 @@ end
 local function updateTrail()
     if not db.trail or not ring:IsShown() then
         for i = 1, TRAIL_LENGTH do trailFrames[i]:Hide() end
-        for i = #trailPositions, 1, -1 do trailPositions[i] = nil end
+        wipe(trailPositions)
         return
     end
     local scale = UIParent:GetEffectiveScale()
@@ -280,6 +269,7 @@ local function refreshVisibility()
     end
 end
 
+local panel, guiAvailable, guiError, buildOptionsPanel
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -288,26 +278,22 @@ events:RegisterEvent("PLAYER_LOGIN")
 
 events:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
-        -- THE ACTUAL BUG: everything above this point (including the GUI
-        -- panel, which builds itself synchronously at file-load time) ran
-        -- BEFORE the client loaded the real CombatCursorDB from disk into
-        -- the global. `db` has been pointing at a disposable, freshly-
-        -- defaulted table this whole time -- every change made via the
-        -- GUI or CLI was landing there instead of the table that actually
-        -- gets saved. Re-sync now that the real data has loaded: fill in
-        -- any keys a newer version added that this save doesn't have yet,
-        -- then re-point db at the real table so every closure in this
-        -- file (visuals, GUI, CLI -- db is captured as a shared upvalue
-        -- everywhere) reads and writes the object that's actually saved.
         for k, v in pairs(defaults) do
             if CombatCursorDB[k] == nil then
                 CombatCursorDB[k] = v
             end
         end
         db = CombatCursorDB
-        dprint("ADDON_LOADED, re-synced to real saved data")
         applyVisualSettings()
-        refreshAllWidgets()
+        local ok, result = pcall(buildOptionsPanel)
+        if ok then
+            panel = result
+            guiAvailable = true
+        else
+            guiError = tostring(result)
+            print("|cffff4444CombatCursor:|r the settings GUI failed to load on this client (falling back to /ccursor commands only).")
+            print("|cffff4444CombatCursor error:|r " .. guiError)
+        end
     elseif event == "PLAYER_LOGIN" then
         applyVisualSettings()
         refreshVisibility()
@@ -324,10 +310,6 @@ end)
 -- GUI: Interface Options panel
 -- (Game Menu -> Interface -> AddOns -> CombatCursor)
 ----------------------------------------------------------------------
-
-local panel -- set inside buildOptionsPanel() if it succeeds
-local guiAvailable = false
-local guiError = nil
 
 local widgetCounter = 0
 local function nextWidgetName(prefix)
@@ -348,7 +330,6 @@ local function addCheckboxAt(parent, label, x, y, get, set, tooltipText)
     cb.text = _G[cb:GetName() .. "Text"]
     if cb.text then cb.text:SetText(label) end
     cb:SetChecked(get())
-    table.insert(refreshFns, function() cb:SetChecked(get()) end)
     cb:SetScript("OnClick", function(self)
         set(self:GetChecked() and true or false)
         applyVisualSettings()
@@ -376,7 +357,6 @@ local function addSliderAt(parent, label, x, y, minVal, maxVal, step, get, set)
     _G[slider:GetName() .. "High"]:SetText(tostring(maxVal))
     _G[slider:GetName() .. "Text"]:SetText(label)
     slider:SetValue(get())
-    table.insert(refreshFns, function() slider:SetValue(get()) end)
     slider:SetScript("OnValueChanged", function(self, value)
         if step >= 1 then value = math.floor(value + 0.5) end
         set(value)
@@ -403,10 +383,6 @@ local function addColorSwatchAt(parent, x, y, getRGB, setRGB)
     swatch:SetPoint("BOTTOMRIGHT", -2, 2)
     local r, g, b = getRGB()
     swatch:SetTexture(r, g, b)
-    table.insert(refreshFns, function()
-        local rr, gg, bb = getRGB()
-        swatch:SetTexture(rr, gg, bb)
-    end)
 
     btn:SetScript("OnClick", function()
         local function apply()
@@ -435,7 +411,7 @@ local function addLabelAt(parent, text, x, y)
     return fs
 end
 
-local function buildOptionsPanel()
+buildOptionsPanel = function()
 local panel = CreateFrame("Frame", "CombatCursorOptionsPanel", UIParent)
 panel.name = "CombatCursor"
 
@@ -548,18 +524,6 @@ InterfaceOptions_AddCategory(panel)
 
 return panel
 end -- buildOptionsPanel
-
-do
-    local ok, result = pcall(buildOptionsPanel)
-    if ok then
-        panel = result
-        guiAvailable = true
-    else
-        guiError = tostring(result)
-        print("|cffff4444CombatCursor:|r the settings GUI failed to load on this client (falling back to /ccursor commands only).")
-        print("|cffff4444CombatCursor error:|r " .. guiError)
-    end
-end
 
 ----------------------------------------------------------------------
 -- /ccursor command line (kept working alongside the GUI regardless of
